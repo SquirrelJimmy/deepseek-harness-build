@@ -39,9 +39,10 @@ http://localhost:3080
 
 The image includes DeepSeek Harness plus common utility tools for agent work:
 
-- Git, OpenSSH, curl, jq, ripgrep, file
-- Python 3, pip, venv
+- Git, Git LFS, OpenSSH, curl, jq, yq, ripgrep, fd, fzf, file
+- Python 3, pip, venv, uv, uvx
 - build-essential
+- sqlite3, rsync, tree, less, vim-tiny
 - zip, unzip, xz-utils
 
 ## Mounted directory permissions
