@@ -1,0 +1,166 @@
+name: Build DeepSeek Harness image
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: deepseek-harness-image
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  UPSTREAM_REPO: deepseek-ai/deepseek-harness
+
+jobs:
+  build:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve image name
+        id: image
+        shell: bash
+        run: |
+          repo="$(printf '%s' "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          echo "name=${REGISTRY}/${repo}" >> "${GITHUB_OUTPUT}"
+
+      - name: Resolve latest upstream tag
+        id: upstream
+        shell: bash
+        run: |
+          tags="$(
+            git ls-remote --tags --refs "https://github.com/${UPSTREAM_REPO}.git" "refs/tags/dsh-v*" \
+              | awk '{ sub("refs/tags/", "", $2); print $2 }'
+          )"
+
+          tag="$(TAGS="${tags}" node <<'NODE'
+          const tags = (process.env.TAGS || '').split(/\n/).map((tag) => tag.trim()).filter(Boolean);
+
+          function parse(tag) {
+            const version = tag.replace(/^dsh-v/, '');
+            const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/);
+            if (!match) return null;
+
+            return {
+              tag,
+              major: Number(match[1]),
+              minor: Number(match[2]),
+              patch: Number(match[3]),
+              prerelease: match[4] ? match[4].split('.') : [],
+            };
+          }
+
+          function compareIdentifier(left, right) {
+            const leftNumeric = /^\d+$/.test(left);
+            const rightNumeric = /^\d+$/.test(right);
+
+            if (leftNumeric && rightNumeric) return Number(left) - Number(right);
+            if (leftNumeric) return -1;
+            if (rightNumeric) return 1;
+            return left.localeCompare(right);
+          }
+
+          function comparePrerelease(left, right) {
+            if (left.length === 0 && right.length === 0) return 0;
+            if (left.length === 0) return 1;
+            if (right.length === 0) return -1;
+
+            const length = Math.max(left.length, right.length);
+            for (let index = 0; index < length; index += 1) {
+              if (left[index] === undefined) return -1;
+              if (right[index] === undefined) return 1;
+
+              const comparison = compareIdentifier(left[index], right[index]);
+              if (comparison !== 0) return comparison;
+            }
+
+            return 0;
+          }
+
+          const latest = tags
+            .map(parse)
+            .filter(Boolean)
+            .sort((left, right) =>
+              left.major - right.major ||
+              left.minor - right.minor ||
+              left.patch - right.patch ||
+              comparePrerelease(left.prerelease, right.prerelease)
+            )
+            .at(-1);
+
+          if (latest) console.log(latest.tag);
+          NODE
+          )"
+
+          if [[ -z "${tag}" ]]; then
+            echo "No upstream dsh-v* tag found in ${UPSTREAM_REPO}" >&2
+            exit 1
+          fi
+
+          version="${tag#dsh-v}"
+
+          if [[ "${version}" == "${tag}" ]]; then
+            echo "Unexpected upstream tag format: ${tag}" >&2
+            exit 1
+          fi
+
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "Resolved upstream tag ${tag}; npm version ${version}"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check whether image tag already exists
+        id: existing
+        shell: bash
+        run: |
+          image="${{ steps.image.outputs.name }}:${{ steps.upstream.outputs.tag }}"
+
+          if docker manifest inspect "${image}" > /dev/null 2>&1; then
+            echo "exists=true" >> "${GITHUB_OUTPUT}"
+            echo "Image already exists: ${image}"
+          else
+            echo "exists=false" >> "${GITHUB_OUTPUT}"
+            echo "Image does not exist yet: ${image}"
+          fi
+
+      - name: Set up QEMU
+        if: steps.existing.outputs.exists != 'true'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: steps.existing.outputs.exists != 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        if: steps.existing.outputs.exists != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            DSH_VERSION=${{ steps.upstream.outputs.version }}
+          tags: |
+            ${{ steps.image.outputs.name }}:${{ steps.upstream.outputs.tag }}
+            ${{ steps.image.outputs.name }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.upstream.outputs.tag }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.vendor=SquirrelJimmy
+            org.opencontainers.image.title=DeepSeek Harness
+            org.opencontainers.image.description=DeepSeek Harness Web UI image built from the upstream dsh tag.

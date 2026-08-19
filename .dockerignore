@@ -1,0 +1,13 @@
+.git
+.github
+.DS_Store
+node_modules
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+workspace
+data
+dist
+build
+coverage
