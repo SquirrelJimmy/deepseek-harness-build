@@ -3,6 +3,14 @@ name: Build DeepSeek Harness image
 on:
   schedule:
     - cron: "0 3 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - Dockerfile
+      - docker-entrypoint.sh
+      - dsh.docker.cordis.yml
+      - .github/workflows/build.yml
   workflow_dispatch:
     inputs:
       force_rebuild:
@@ -42,7 +50,7 @@ jobs:
         id: build_mode
         shell: bash
         run: |
-          force_rebuild="${{ github.event_name == 'workflow_dispatch' && inputs.force_rebuild == true }}"
+          force_rebuild="${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.force_rebuild == true) }}"
           echo "force_rebuild=${force_rebuild}" >> "${GITHUB_OUTPUT}"
           echo "Force rebuild: ${force_rebuild}"
 

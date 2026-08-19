@@ -19,6 +19,7 @@ RUN apt-get update \
       curl \
       file \
       git \
+      gosu \
       jq \
       openssh-client \
       procps \
@@ -39,14 +40,17 @@ RUN mkdir -p /data/dsh /workspace /opt/dsh /home/node/.cache /home/node/.local \
     && chown -R node:node /data/dsh /workspace /opt/dsh /home/node/.cache /home/node/.local
 
 COPY --chown=node:node dsh.docker.cordis.yml /opt/dsh/docker.cordis.yml
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-USER node
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 WORKDIR /workspace
 
-VOLUME ["/data/dsh", "/workspace"]
+VOLUME ["/data/dsh", "/home/node/.cache", "/home/node/.local", "/workspace"]
 EXPOSE 3080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3080/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["dsh", "web", "--patch", "/opt/dsh/docker.cordis.yml"]
