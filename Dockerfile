@@ -24,14 +24,12 @@ RUN apt-get update \
     && npm install -g "@deepseek-ai/dsh@${DSH_VERSION}" \
     && npm cache clean --force
 
-RUN groupadd --gid 1000 dsh \
-    && useradd --uid 1000 --gid dsh --create-home --shell /bin/bash dsh \
-    && mkdir -p /data/dsh /workspace /opt/dsh \
-    && chown -R dsh:dsh /data/dsh /workspace /opt/dsh
+RUN mkdir -p /data/dsh /workspace /opt/dsh \
+    && chown -R node:node /data/dsh /workspace /opt/dsh
 
-COPY --chown=dsh:dsh dsh.docker.cordis.yml /opt/dsh/docker.cordis.yml
+COPY --chown=node:node dsh.docker.cordis.yml /opt/dsh/docker.cordis.yml
 
-USER dsh
+USER node
 WORKDIR /workspace
 
 VOLUME ["/data/dsh", "/workspace"]
