@@ -55,6 +55,8 @@ The container starts as root only long enough to create and chown these writable
 
 If your host filesystem does not support `chown`, make sure those mounted directories are writable by UID `1000`, or run with `DSH_RUN_AS_ROOT=true` as a last resort.
 
+The Docker overlay uses plain YAML and binds the Harness web server to `0.0.0.0:3080` inside the container. Keep the host port mapping scoped to `127.0.0.1` unless you intentionally want LAN access.
+
 ## Tag overwrite behavior
 
 GHCR image tags are mutable in this workflow. Pushing `latest` or `dsh-v...` again will move that tag to the new image digest. Existing consumers pinned by digest are not affected, but consumers using a tag must pull again to receive the new image.
