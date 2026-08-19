@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "0 3 * * *"
   workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: Rebuild and overwrite existing image tags for the latest upstream tag.
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: deepseek-harness-image
@@ -31,6 +37,14 @@ jobs:
         run: |
           repo="$(printf '%s' "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
           echo "name=${REGISTRY}/${repo}" >> "${GITHUB_OUTPUT}"
+
+      - name: Resolve build mode
+        id: build_mode
+        shell: bash
+        run: |
+          force_rebuild="${{ github.event_name == 'workflow_dispatch' && inputs.force_rebuild == true }}"
+          echo "force_rebuild=${force_rebuild}" >> "${GITHUB_OUTPUT}"
+          echo "Force rebuild: ${force_rebuild}"
 
       - name: Resolve latest upstream tag
         id: upstream
@@ -128,6 +142,12 @@ jobs:
         shell: bash
         run: |
           image="${{ steps.image.outputs.name }}:${{ steps.upstream.outputs.tag }}"
+
+          if [[ "${{ steps.build_mode.outputs.force_rebuild }}" == "true" ]]; then
+            echo "exists=false" >> "${GITHUB_OUTPUT}"
+            echo "Force rebuild enabled; existing tag will be overwritten if present: ${image}"
+            exit 0
+          fi
 
           if docker manifest inspect "${image}" > /dev/null 2>&1; then
             echo "exists=true" >> "${GITHUB_OUTPUT}"
