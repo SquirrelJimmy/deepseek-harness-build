@@ -35,10 +35,17 @@ Open:
 http://localhost:3080
 ```
 
+View startup and runtime logs:
+
+```sh
+docker logs -f <container>
+```
+
 ## Included tools
 
-The image includes DeepSeek Harness plus common utility tools for agent work:
+The image includes DeepSeek Harness plus a built-in nginx proxy and common utility tools for agent work:
 
+- nginx
 - Git, Git LFS, OpenSSH, curl, jq, yq, ripgrep, fd, fzf, file
 - Python 3, pip, venv, uv, uvx
 - build-essential
@@ -56,7 +63,9 @@ The container starts as root only long enough to create and chown these writable
 
 If your host filesystem does not support `chown`, make sure those mounted directories are writable by UID `1000`, or run with `DSH_RUN_AS_ROOT=true` as a last resort.
 
-The Docker overlay uses plain YAML and binds the Harness web server to `0.0.0.0:3080` inside the container. Keep the host port mapping scoped to `127.0.0.1` unless you intentionally want LAN access.
+The default command binds the Harness web server to `127.0.0.1:13080` inside the container. Built-in nginx listens on `0.0.0.0:3080` and forwards to Harness. For `/api/` requests, nginx clears remote browser trust headers and rewrites `Host` to the internal loopback address so the server-side loopback guard does not return `403`.
+
+Keep the host port mapping scoped to `127.0.0.1` unless you intentionally want LAN access. If you publish it through an external reverse proxy, add authentication or restrict the network path before exposing it.
 
 ## Tag overwrite behavior
 
