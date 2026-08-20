@@ -9,7 +9,7 @@ on:
     paths:
       - Dockerfile
       - docker-entrypoint.sh
-      - dsh.docker.cordis.yml
+      - nginx.conf
       - .github/workflows/build.yml
   workflow_dispatch:
     inputs:

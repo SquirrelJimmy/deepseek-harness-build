@@ -35,6 +35,7 @@ RUN apt-get update \
       gosu \
       jq \
       less \
+      nginx \
       openssh-client \
       procps \
       python3 \
@@ -66,10 +67,11 @@ RUN mkdir -p \
       /home/node/.local/share/uv/tools \
     && chown -R node:node /data/dsh /workspace /opt/dsh /home/node/.cache /home/node/.local
 
-COPY --chown=node:node dsh.docker.cordis.yml /opt/dsh/docker.cordis.yml
+COPY nginx.conf /etc/nginx/nginx.conf
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
+    && nginx -t
 
 WORKDIR /workspace
 
@@ -80,4 +82,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3080/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["dsh", "web", "--patch", "/opt/dsh/docker.cordis.yml"]
+CMD ["dsh", "--profile", "web", "--host", "127.0.0.1", "--port", "13080", "--no-open"]
