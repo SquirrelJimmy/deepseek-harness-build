@@ -59,6 +59,23 @@ fix_dir() {
   fi
 }
 
+prepare_nginx_runtime() {
+  local runtime_dir="/tmp/dsh-nginx"
+
+  mkdir -p "${runtime_dir}"
+  chmod 0777 "${runtime_dir}" 2>/dev/null || true
+  find "${runtime_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+
+  mkdir -p \
+    "${runtime_dir}/client_temp" \
+    "${runtime_dir}/proxy_temp" \
+    "${runtime_dir}/fastcgi_temp" \
+    "${runtime_dir}/uwsgi_temp" \
+    "${runtime_dir}/scgi_temp"
+
+  chmod -R 0777 "${runtime_dir}" 2>/dev/null || true
+}
+
 run_web_with_nginx() {
   local dsh_pid
   local nginx_pid
@@ -78,6 +95,7 @@ run_web_with_nginx() {
   dsh_pid="$!"
   log "dsh pid: ${dsh_pid}"
 
+  prepare_nginx_runtime
   log "starting nginx on 0.0.0.0:3080"
   nginx -g "daemon off;" &
   nginx_pid="$!"
