@@ -65,13 +65,21 @@ RUN mkdir -p \
       /home/node/.cache/pip \
       /home/node/.local/bin \
       /home/node/.local/share/uv/tools \
-    && chown -R node:node /data/dsh /workspace /opt/dsh /home/node/.cache /home/node/.local
+      /tmp/dsh-nginx/client_temp \
+      /tmp/dsh-nginx/proxy_temp \
+      /tmp/dsh-nginx/fastcgi_temp \
+      /tmp/dsh-nginx/uwsgi_temp \
+      /tmp/dsh-nginx/scgi_temp \
+    && chown -R node:node /data/dsh /workspace /opt/dsh /home/node/.cache /home/node/.local \
+    && chmod -R 0777 /tmp/dsh-nginx
 
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
-    && nginx -t
+    && nginx -t \
+    && find /tmp/dsh-nginx -mindepth 1 -maxdepth 1 -exec rm -rf {} + \
+    && chmod 0777 /tmp/dsh-nginx
 
 WORKDIR /workspace
 
