@@ -73,11 +73,11 @@ RUN mkdir -p \
     && chown -R node:node /data/dsh /workspace /opt/dsh /home/node/.cache /home/node/.local \
     && chmod -R 0777 /tmp/dsh-nginx
 
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY nginx.conf /opt/dsh/nginx.conf.default
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
-    && nginx -t \
+    && nginx -t -c /opt/dsh/nginx.conf.default \
     && find /tmp/dsh-nginx -mindepth 1 -maxdepth 1 -exec rm -rf {} + \
     && chmod 0777 /tmp/dsh-nginx
 
@@ -87,7 +87,7 @@ VOLUME ["/data/dsh", "/home/node/.cache", "/home/node/.local", "/workspace"]
 EXPOSE 3080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:3080/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+  CMD node -e "const socket=require('node:net').connect(3080,'127.0.0.1');socket.setTimeout(4000);socket.once('connect',()=>{socket.destroy();process.exit(0)});socket.once('timeout',()=>{socket.destroy();process.exit(1)});socket.once('error',()=>process.exit(1))"
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["dsh", "--profile", "web", "--host", "127.0.0.1", "--port", "13080", "--no-open"]

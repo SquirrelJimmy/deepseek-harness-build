@@ -65,6 +65,24 @@ If your host filesystem does not support `chown`, make sure those mounted direct
 
 The default command binds the Harness web server to `127.0.0.1:13080` inside the container. Built-in nginx listens on `0.0.0.0:3080` and forwards to Harness. For `/api/` requests, nginx clears remote browser trust headers and rewrites `Host` to the internal loopback address so the server-side loopback guard does not return `403`.
 
+## Persistent nginx configuration
+
+The built-in nginx configuration is stored at `/data/dsh/nginx/nginx.conf`. Because `/data/dsh` is already the Harness persistent volume, no additional mount is required. On the first container start, the entrypoint copies the image template to that path. Existing configuration is never overwritten during container recreation or image upgrades.
+
+To keep nginx configuration in a separate host directory instead, set the config directory and mount it:
+
+```yaml
+services:
+  deepseek-harness:
+    environment:
+      DSH_NGINX_CONFIG_DIR: /data/nginx
+    volumes:
+      - ./data/dsh:/data/dsh
+      - ./data/nginx:/data/nginx
+```
+
+After editing `nginx.conf`, restart the container. The entrypoint validates the persisted configuration with `nginx -t` before starting nginx, and prints the active config path in the container log.
+
 Keep the host port mapping scoped to `127.0.0.1` unless you intentionally want LAN access. If you publish it through an external reverse proxy, add authentication or restrict the network path before exposing it.
 
 ## Tag overwrite behavior
