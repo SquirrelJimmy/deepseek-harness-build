@@ -5,6 +5,9 @@ set -euo pipefail
 : "${DSH_RUNTIME_USER:=node}"
 : "${DSH_FIX_OWNERSHIP:=true}"
 : "${DSH_RUN_AS_ROOT:=false}"
+: "${DSH_NGINX_CONFIG_DIR:=${DSH_HOME}/nginx}"
+: "${DSH_NGINX_CONFIG_FILE:=${DSH_NGINX_CONFIG_DIR}/nginx.conf}"
+: "${DSH_NGINX_CONFIG_TEMPLATE:=/opt/dsh/nginx.conf.default}"
 
 log() {
   printf '[entrypoint] %s\n' "$*" >&2
@@ -76,6 +79,24 @@ prepare_nginx_runtime() {
   chmod -R 0777 "${runtime_dir}" 2>/dev/null || true
 }
 
+prepare_nginx_config() {
+  mkdir -p "${DSH_NGINX_CONFIG_DIR}"
+
+  if [[ ! -f "${DSH_NGINX_CONFIG_FILE}" ]]; then
+    log "initializing nginx config at ${DSH_NGINX_CONFIG_FILE}"
+    cp "${DSH_NGINX_CONFIG_TEMPLATE}" "${DSH_NGINX_CONFIG_FILE}"
+    chmod 0644 "${DSH_NGINX_CONFIG_FILE}" 2>/dev/null || true
+  fi
+
+  if [[ "$(id -u)" == "0" && "${DSH_RUN_AS_ROOT}" != "true" ]]; then
+    chown "${DSH_RUNTIME_USER}:${DSH_RUNTIME_USER}" \
+      "${DSH_NGINX_CONFIG_DIR}" \
+      "${DSH_NGINX_CONFIG_FILE}"
+  fi
+
+  nginx -t -c "${DSH_NGINX_CONFIG_FILE}"
+}
+
 run_web_with_nginx() {
   local dsh_pid
   local nginx_pid
@@ -84,6 +105,9 @@ run_web_with_nginx() {
   log "starting DeepSeek Harness web stack"
   log "dsh command: $*"
   log "dsh home: ${DSH_HOME}"
+
+  prepare_nginx_runtime
+  prepare_nginx_config
 
   if [[ "$(id -u)" == "0" && "${DSH_RUN_AS_ROOT}" != "true" ]]; then
     log "starting dsh as ${DSH_RUNTIME_USER}"
@@ -95,9 +119,9 @@ run_web_with_nginx() {
   dsh_pid="$!"
   log "dsh pid: ${dsh_pid}"
 
-  prepare_nginx_runtime
   log "starting nginx on 0.0.0.0:3080"
-  nginx -g "daemon off;" &
+  log "nginx config: ${DSH_NGINX_CONFIG_FILE}"
+  nginx -c "${DSH_NGINX_CONFIG_FILE}" -g "daemon off;" &
   nginx_pid="$!"
   log "nginx pid: ${nginx_pid}"
 
