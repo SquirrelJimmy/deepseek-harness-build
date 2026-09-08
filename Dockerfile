@@ -11,6 +11,11 @@ ARG DSH_VERSION=0.1.0-rc.7
 ENV DSH_HOME=/data/dsh \
     NODE_ENV=production \
     NODE_USE_ENV_PROXY=1 \
+    NPM_CONFIG_FETCH_RETRIES=5 \
+    NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 \
+    NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000 \
+    NPM_CONFIG_AUDIT=false \
+    NPM_CONFIG_FUND=false \
     UV_CACHE_DIR=/home/node/.cache/uv \
     UV_TOOL_DIR=/home/node/.local/share/uv/tools \
     UV_TOOL_BIN_DIR=/home/node/.local/bin \
@@ -21,8 +26,8 @@ ENV DSH_HOME=/data/dsh \
 
 COPY --from=uv /uv /uvx /usr/local/bin/
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+RUN apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
       bash \
       build-essential \
       ca-certificates \
@@ -51,10 +56,14 @@ RUN apt-get update \
       yq \
       zip \
     && rm -rf /var/lib/apt/lists/* \
-    && ln -s /usr/bin/fdfind /usr/local/bin/fd \
-    && corepack enable \
-    && corepack prepare pnpm@11.7.0 --activate \
-    && npm install -g "@deepseek-ai/dsh@${DSH_VERSION}" \
+    && ln -s /usr/bin/fdfind /usr/local/bin/fd
+
+RUN corepack enable \
+    && corepack prepare pnpm@11.7.0 --activate
+
+RUN npm install -g \
+      --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,fs-ext,node-pty,@google/genai,protobufjs \
+      "@deepseek-ai/dsh@${DSH_VERSION}" \
     && npm cache clean --force
 
 RUN mkdir -p \
