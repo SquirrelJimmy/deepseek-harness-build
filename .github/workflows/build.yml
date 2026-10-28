@@ -10,6 +10,7 @@ on:
       - Dockerfile
       - docker-entrypoint.sh
       - nginx.conf
+      - scripts/smoke-test.sh
       - .github/workflows/build.yml
   workflow_dispatch:
     inputs:
@@ -31,9 +32,14 @@ jobs:
   build:
     name: Build and publish
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     permissions:
       contents: read
       packages: write
+    outputs:
+      built: ${{ steps.existing.outputs.exists == 'false' }}
+      image: ${{ steps.image.outputs.name }}
+      tag: ${{ steps.upstream.outputs.tag }}
 
     steps:
       - name: Checkout repository
@@ -63,8 +69,12 @@ jobs:
               | awk '{ sub("refs/tags/", "", $2); print $2 }'
           )"
 
-          tag="$(TAGS="${tags}" node <<'NODE'
+          selection="$(TAGS="${tags}" node <<'NODE'
           const tags = (process.env.TAGS || '').split(/\n/).map((tag) => tag.trim()).filter(Boolean);
+
+          // Upstream ships rc builds as releases and uses alpha/beta/dev for
+          // in-progress work; those must never move the :latest tag.
+          const UNSTABLE = new Set(['alpha', 'beta', 'dev']);
 
           function parse(tag) {
             const version = tag.replace(/^dsh-v/, '');
@@ -107,25 +117,32 @@ jobs:
             return 0;
           }
 
-          const latest = tags
-            .map(parse)
-            .filter(Boolean)
-            .sort((left, right) =>
-              left.major - right.major ||
+          function compare(left, right) {
+            return left.major - right.major ||
               left.minor - right.minor ||
               left.patch - right.patch ||
-              comparePrerelease(left.prerelease, right.prerelease)
-            )
-            .at(-1);
+              comparePrerelease(left.prerelease, right.prerelease);
+          }
 
-          if (latest) console.log(latest.tag);
+          function isUnstable(version) {
+            return version.prerelease.length > 0 && UNSTABLE.has(version.prerelease[0].toLowerCase());
+          }
+
+          const parsed = tags.map(parse).filter(Boolean);
+          const candidates = parsed.filter((version) => !isUnstable(version));
+          const pool = candidates.length > 0 ? candidates : parsed;
+          const selected = pool.sort(compare).at(-1);
+
+          if (selected) console.log(`${selected.tag}\t${isUnstable(selected) ? 'true' : 'false'}`);
           NODE
           )"
 
-          if [[ -z "${tag}" ]]; then
+          if [[ -z "${selection}" ]]; then
             echo "No upstream dsh-v* tag found in ${UPSTREAM_REPO}" >&2
             exit 1
           fi
+
+          IFS=$'\t' read -r tag unstable <<< "${selection}"
 
           version="${tag#dsh-v}"
 
@@ -136,7 +153,29 @@ jobs:
 
           echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
-          echo "Resolved upstream tag ${tag}; npm version ${version}"
+          echo "unstable=${unstable}" >> "${GITHUB_OUTPUT}"
+          echo "Resolved upstream tag ${tag}; npm version ${version}; unstable=${unstable}"
+
+      - name: Compose image tags
+        id: tags
+        shell: bash
+        run: |
+          image="${{ steps.image.outputs.name }}"
+          tag="${{ steps.upstream.outputs.tag }}"
+          tags="${image}:${tag}"
+
+          if [[ "${{ steps.upstream.outputs.unstable }}" == "false" ]]; then
+            tags="${tags}"$'\n'"${image}:latest"
+            echo "Also publishing ${image}:latest"
+          else
+            echo "Unstable upstream build; leaving ${image}:latest untouched"
+          fi
+
+          {
+            echo "list<<EOF"
+            echo "${tags}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -180,11 +219,11 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             DSH_VERSION=${{ steps.upstream.outputs.version }}
-          tags: |
-            ${{ steps.image.outputs.name }}:${{ steps.upstream.outputs.tag }}
-            ${{ steps.image.outputs.name }}:latest
+          tags: ${{ steps.tags.outputs.list }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.upstream.outputs.tag }}
@@ -192,3 +231,34 @@ jobs:
             org.opencontainers.image.vendor=SquirrelJimmy
             org.opencontainers.image.title=DeepSeek Harness
             org.opencontainers.image.description=DeepSeek Harness Web UI image built from the upstream dsh tag.
+
+  smoke:
+    name: Smoke test
+    needs: build
+    if: needs.build.outputs.built == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull published image
+        run: docker pull "${{ needs.build.outputs.image }}:${{ needs.build.outputs.tag }}"
+
+      - name: Run smoke test
+        run: scripts/smoke-test.sh "${{ needs.build.outputs.image }}:${{ needs.build.outputs.tag }}" 3081
+
+      - name: Cleanup
+        if: always()
+        run: docker image rm -f "${{ needs.build.outputs.image }}:${{ needs.build.outputs.tag }}" || true

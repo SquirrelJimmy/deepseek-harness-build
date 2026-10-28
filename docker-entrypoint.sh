@@ -8,6 +8,13 @@ set -euo pipefail
 : "${DSH_NGINX_CONFIG_DIR:=${DSH_HOME}/nginx}"
 : "${DSH_NGINX_CONFIG_FILE:=${DSH_NGINX_CONFIG_DIR}/nginx.conf}"
 : "${DSH_NGINX_CONFIG_TEMPLATE:=/opt/dsh/nginx.conf.default}"
+: "${DSH_NGINX_CONFIG_RESET:=false}"
+: "${DSH_PUBLIC_URL:=}"
+
+readonly DSH_NGINX_TEMPLATE_VERSION=2
+# sha256 of the historical (v1) built-in nginx.conf. A persisted copy that still
+# matches it was never customized, so it can be upgraded in place.
+readonly DSH_NGINX_V1_SHA256="9cfcff2c335bfdf784cd6a974e575e43caef5f0c7b6650cce05d517d5260f081"
 
 log() {
   printf '[entrypoint] %s\n' "$*" >&2
@@ -79,14 +86,55 @@ prepare_nginx_runtime() {
   chmod -R 0777 "${runtime_dir}" 2>/dev/null || true
 }
 
+nginx_template_version() {
+  local version
+
+  version="$(sed -n 's/^# dsh-nginx-template v\([0-9][0-9]*\).*/\1/p' "$1")"
+  printf '%s' "${version%%$'\n'*}"
+}
+
+sha256_file() {
+  sha256sum "$1" | awk '{print $1}'
+}
+
+upgrade_nginx_config() {
+  local reason="$1"
+  local backup="${DSH_NGINX_CONFIG_FILE}.bak.$(date +%Y%m%d%H%M%S)"
+
+  if [[ -f "${DSH_NGINX_CONFIG_FILE}" ]]; then
+    cp -p "${DSH_NGINX_CONFIG_FILE}" "${backup}"
+    log "backed up nginx config to ${backup}"
+  fi
+
+  log "installing nginx template v${DSH_NGINX_TEMPLATE_VERSION} (${reason})"
+  cp "${DSH_NGINX_CONFIG_TEMPLATE}" "${DSH_NGINX_CONFIG_FILE}"
+}
+
 prepare_nginx_config() {
+  local current_version=""
+
   mkdir -p "${DSH_NGINX_CONFIG_DIR}"
 
-  if [[ ! -f "${DSH_NGINX_CONFIG_FILE}" ]]; then
-    log "initializing nginx config at ${DSH_NGINX_CONFIG_FILE}"
-    cp "${DSH_NGINX_CONFIG_TEMPLATE}" "${DSH_NGINX_CONFIG_FILE}"
-    chmod 0644 "${DSH_NGINX_CONFIG_FILE}" 2>/dev/null || true
+  if [[ -f "${DSH_NGINX_CONFIG_FILE}" ]]; then
+    current_version="$(nginx_template_version "${DSH_NGINX_CONFIG_FILE}")"
   fi
+
+  if [[ ! -f "${DSH_NGINX_CONFIG_FILE}" ]]; then
+    log "initializing nginx config at ${DSH_NGINX_CONFIG_FILE} (template v${DSH_NGINX_TEMPLATE_VERSION})"
+    cp "${DSH_NGINX_CONFIG_TEMPLATE}" "${DSH_NGINX_CONFIG_FILE}"
+  elif [[ "${DSH_NGINX_CONFIG_RESET}" == "true" ]]; then
+    upgrade_nginx_config "reset requested via DSH_NGINX_CONFIG_RESET"
+  elif [[ "${current_version}" =~ ^[0-9]+$ ]] && (( current_version >= DSH_NGINX_TEMPLATE_VERSION )); then
+    log "keeping nginx config ${DSH_NGINX_CONFIG_FILE} (template v${current_version})"
+  elif [[ "${current_version}" =~ ^[0-9]+$ ]]; then
+    upgrade_nginx_config "template v${current_version} -> v${DSH_NGINX_TEMPLATE_VERSION}"
+  elif [[ "$(sha256_file "${DSH_NGINX_CONFIG_FILE}")" == "${DSH_NGINX_V1_SHA256}" ]]; then
+    upgrade_nginx_config "unmodified legacy config detected"
+  else
+    log "warning: ${DSH_NGINX_CONFIG_FILE} looks customized; keeping it. Current template: ${DSH_NGINX_CONFIG_TEMPLATE}"
+  fi
+
+  chmod 0644 "${DSH_NGINX_CONFIG_FILE}" 2>/dev/null || true
 
   if [[ "$(id -u)" == "0" && "${DSH_RUN_AS_ROOT}" != "true" ]]; then
     chown "${DSH_RUNTIME_USER}:${DSH_RUNTIME_USER}" \
@@ -98,12 +146,30 @@ prepare_nginx_config() {
 }
 
 run_web_with_nginx() {
+  local arg
   local dsh_pid
   local nginx_pid
   local status
+  local has_public_url=0
+  local -a dsh_args=("$@")
+
+  if [[ -n "${DSH_PUBLIC_URL}" ]]; then
+    for arg in "${dsh_args[@]}"; do
+      case "${arg}" in
+        --public-url | --public-url=*)
+          has_public_url=1
+          ;;
+      esac
+    done
+
+    if (( has_public_url == 0 )); then
+      dsh_args+=(--public-url "${DSH_PUBLIC_URL}")
+      log "advertising public URL: ${DSH_PUBLIC_URL}"
+    fi
+  fi
 
   log "starting DeepSeek Harness web stack"
-  log "dsh command: $*"
+  log "dsh command: ${dsh_args[*]}"
   log "dsh home: ${DSH_HOME}"
 
   prepare_nginx_runtime
@@ -111,10 +177,10 @@ run_web_with_nginx() {
 
   if [[ "$(id -u)" == "0" && "${DSH_RUN_AS_ROOT}" != "true" ]]; then
     log "starting dsh as ${DSH_RUNTIME_USER}"
-    gosu "${DSH_RUNTIME_USER}" "$@" &
+    gosu "${DSH_RUNTIME_USER}" "${dsh_args[@]}" &
   else
     log "starting dsh as $(id -un)"
-    "$@" &
+    "${dsh_args[@]}" &
   fi
   dsh_pid="$!"
   log "dsh pid: ${dsh_pid}"
