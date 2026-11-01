@@ -94,6 +94,9 @@ docker exec "${NAME}" sh -c 'printf A | xxd -p' | grep -qx '41' || fail "xxd is 
 echo "ok   xxd"
 docker exec "${NAME}" zsh -c 'echo zsh-ok' | grep -qx 'zsh-ok' || fail "zsh -c is broken"
 echo "ok   /bin/zsh"
+docker exec --user node "${NAME}" zsh -c 'source /home/node/.zshrc && echo zshrc-ok' | grep -qx 'zshrc-ok' \
+  || fail "default .zshrc is broken"
+echo "ok   default .zshrc"
 docker exec "${NAME}" sh -c 'getent passwd node | cut -d: -f7' | grep -qx '/bin/zsh' \
   || fail "node login shell is not /bin/zsh"
 echo "ok   node login shell /bin/zsh"

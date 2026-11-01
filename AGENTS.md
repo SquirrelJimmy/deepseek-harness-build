@@ -22,6 +22,7 @@ The upstream project lives at `deepseek-ai/deepseek-harness` and is consumed as 
 | `Dockerfile` | Image definition: Node 24 base, apt tooling, yq static binary, pnpm, `dsh` install, volumes, healthcheck. |
 | `docker-entrypoint.sh` | Runtime orchestration: fix mounted dir ownership, prepare nginx config, launch `dsh web` + nginx, signal handling. |
 | `nginx.conf` | Built-in proxy template (v2). Listens on `0.0.0.0:3080`, forwards to `127.0.0.1:13080`. |
+| `zshrc` | Minimal default zsh config, copied to `/home/node/.zshrc`. |
 | `scripts/smoke-test.sh` | Boots the image and asserts login, proxy/fence behavior, shell, and tooling. |
 | `.github/workflows/build.yml` | Daily upstream-tag resolution, build/push, and smoke-test job. |
 | `README.md` | User-facing usage, env vars, and architecture rationale. |
@@ -73,6 +74,8 @@ Without both bumps, existing users keep the old config and never see your change
   Add them in a derived image, not here, unless the task explicitly asks.
 - The image defaults to `/bin/zsh` (`SHELL=/bin/zsh` and the `node` user's login shell);
   repository scripts stay bash.
+- `zshrc` is copied to `/home/node/.zshrc`. Keep it dependency-free (no Oh My Zsh, Starship,
+  or host-specific paths) so a fresh container starts without errors; the smoke test sources it.
 
 ### Release channels
 
@@ -120,5 +123,5 @@ is not verified until either the local smoke test or the workflow's smoke job pa
   use the published port (e.g. `3080`) with the same token path.
 - `:latest` is only meaningful for stable/rc upstream tags.
 - Workflow triggers only on changes to `Dockerfile`, `docker-entrypoint.sh`, `nginx.conf`,
-  `scripts/smoke-test.sh`, or the workflow file itself; a push touching only docs does not
-  build.
+  `zshrc`, `scripts/smoke-test.sh`, or the workflow file itself; a push touching only docs
+  does not build.

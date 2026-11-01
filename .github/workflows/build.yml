@@ -10,6 +10,7 @@ on:
       - Dockerfile
       - docker-entrypoint.sh
       - nginx.conf
+      - zshrc
       - scripts/smoke-test.sh
       - .github/workflows/build.yml
   workflow_dispatch:

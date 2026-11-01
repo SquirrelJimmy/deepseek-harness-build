@@ -139,6 +139,7 @@ RUN mkdir -p \
     && chmod -R 0777 /tmp/dsh-nginx
 
 COPY nginx.conf /opt/dsh/nginx.conf.default
+COPY --chown=node:node --chmod=644 zshrc /home/node/.zshrc
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
