@@ -68,12 +68,15 @@ The image includes DeepSeek Harness plus a built-in nginx proxy and common utili
 - Python 3, pip, venv, uv, uvx, `python`/`python3`
 - Node.js, npm, pnpm (via corepack)
 - build-essential, pkg-config, make, gcc
-- sqlite3, rsync, tmux, nano, vim-tiny
+- sqlite3, rsync, tmux, nano, vim, xxd
+- shellcheck, shfmt, bc, hexdump (`bsdextrautils`), zstd, 7z (`p7zip-full`)
+- xmllint (`libxml2-utils`), envsubst (`gettext-base`), gpg (`gnupg`)
+- zsh (default shell)
 - lsof, strace, psmisc, procps, dnsutils, iputils-ping, netcat, socat
 - poppler-utils (`pdftotext`, `pdfinfo`)
 - zip, unzip, xz-utils, tzdata
 
-The default locale is `C.UTF-8` and `SHELL` is `/bin/bash`, so UTF-8 output (including Chinese text) works out of the box. `pip install` is not blocked by PEP 668, and `npm i -g` installs into `/home/node/.local` (already on `PATH` and persisted through the volume mount). Set `-e TZ=Asia/Shanghai` (or your zone) if you want local timestamps.
+The default locale is `C.UTF-8` and `SHELL` is `/bin/zsh`, so UTF-8 output (including Chinese text) works out of the box. `pip install` is not blocked by PEP 668, and `npm i -g` installs into `/home/node/.local` (already on `PATH` and persisted through the volume mount). Set `-e TZ=Asia/Shanghai` (or your zone) if you want local timestamps.
 
 Heavyweight tools such as LibreOffice, pandoc, ffmpeg, ImageMagick, and `gh` are intentionally not installed; add them in a derived Dockerfile if your workload needs them. Office document conversion keeps using Harness's own LibreOffice Kit flow.
 

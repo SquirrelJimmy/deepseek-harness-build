@@ -15,7 +15,7 @@ ENV DSH_HOME=/data/dsh \
     NODE_USE_ENV_PROXY=1 \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
-    SHELL=/bin/bash \
+    SHELL=/bin/zsh \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
     NPM_CONFIG_FETCH_RETRIES=5 \
     NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 \
@@ -38,6 +38,8 @@ RUN node -e 'const [major, minor] = process.versions.node.split(".").map(Number)
 RUN DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=5 update \
     && DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
       bash \
+      bc \
+      bsdextrautils \
       build-essential \
       ca-certificates \
       curl \
@@ -45,17 +47,21 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=5 update \
       fd-find \
       file \
       fzf \
+      gettext-base \
       git \
       git-lfs \
+      gnupg \
       gosu \
       iputils-ping \
       jq \
       less \
+      libxml2-utils \
       lsof \
       nano \
       netcat-openbsd \
       nginx \
       openssh-client \
+      p7zip-full \
       pkg-config \
       poppler-utils \
       procps \
@@ -66,6 +72,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=5 update \
       python3-venv \
       ripgrep \
       rsync \
+      shellcheck \
+      shfmt \
       socat \
       sqlite3 \
       strace \
@@ -73,12 +81,16 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=5 update \
       tree \
       tzdata \
       unzip \
-      vim-tiny \
+      vim \
       wget \
+      xxd \
       xz-utils \
       zip \
+      zsh \
+      zstd \
     && rm -rf /var/lib/apt/lists/* \
-    && ln -s /usr/bin/fdfind /usr/local/bin/fd
+    && ln -s /usr/bin/fdfind /usr/local/bin/fd \
+    && usermod -s /bin/zsh node
 
 # The Debian `yq` package is a thin jq wrapper that lacks yq's own flags
 # (`yq -o=json` fails); install the upstream static binary instead.

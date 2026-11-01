@@ -88,6 +88,21 @@ docker exec "${NAME}" dsh --version >/dev/null || fail "dsh --version failed"
 echo "ok   dsh $(docker exec "${NAME}" dsh --version 2>/dev/null | head -n 1 | tr -d '\r')"
 docker exec "${NAME}" git --version >/dev/null || fail "git is missing"
 echo "ok   git"
+docker exec "${NAME}" vim --version | grep -q 'VIM - Vi IMproved' || fail "vim is missing"
+echo "ok   vim"
+docker exec "${NAME}" sh -c 'printf A | xxd -p' | grep -qx '41' || fail "xxd is missing or broken"
+echo "ok   xxd"
+docker exec "${NAME}" zsh -c 'echo zsh-ok' | grep -qx 'zsh-ok' || fail "zsh -c is broken"
+echo "ok   /bin/zsh"
+docker exec "${NAME}" sh -c 'getent passwd node | cut -d: -f7' | grep -qx '/bin/zsh' \
+  || fail "node login shell is not /bin/zsh"
+echo "ok   node login shell /bin/zsh"
+docker exec "${NAME}" sh -c 'test "${SHELL}" = /bin/zsh' || fail "SHELL is not /bin/zsh"
+echo "ok   SHELL=/bin/zsh"
+for tool in shellcheck shfmt bc hexdump zstd 7z xmllint envsubst gpg; do
+  docker exec "${NAME}" sh -c "command -v ${tool} >/dev/null" || fail "${tool} is missing"
+done
+echo "ok   shellcheck/shfmt/bc/hexdump/zstd/7z/xmllint/envsubst/gpg"
 docker exec "${NAME}" head -n 1 /data/dsh/nginx/nginx.conf | grep -q 'dsh-nginx-template v2' \
   || fail "persisted nginx config is not template v2"
 echo "ok   nginx config template v2"
