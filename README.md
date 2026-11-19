@@ -1,5 +1,7 @@
 # DeepSeek Harness Build
 
+[简体中文](README.zh-CN.md)
+
 This repository builds a Docker image for DeepSeek Harness from the latest upstream `dsh-v*` tag in `deepseek-ai/deepseek-harness`.
 
 The GitHub workflow runs every day at `03:00 UTC` and can also be started manually. It checks whether `ghcr.io/<owner>/<repo>:<upstream-tag>` already exists before building. If the image tag exists, the scheduled build is skipped.
