@@ -12,13 +12,13 @@ Every newly published image is smoke-tested by the workflow (`scripts/smoke-test
 
 ## Image tags
 
-- `ghcr.io/<owner>/<repo>:dsh-v0.2.1-rc.4`
+- `ghcr.io/<owner>/<repo>:dsh-v0.2.2-rc.5`
 - `ghcr.io/<owner>/<repo>:latest`
 
 The Docker build receives the npm package version without the `dsh-v` prefix, for example:
 
 ```text
-dsh-v0.2.1-rc.4 -> 0.2.1-rc.4
+dsh-v0.2.2-rc.5 -> 0.2.2-rc.5
 ```
 
 ## Run
@@ -58,6 +58,12 @@ View startup and runtime logs:
 ```sh
 docker logs -f <container>
 ```
+
+### DeepSeek account sign-in
+
+The launch token opens the Harness UI. The separate **Sign in** action for a DeepSeek account requires an HTTP loopback address with an explicit port. Upstream Harness rejects account sign-in from a reverse-proxied domain, even over HTTPS. `DSH_PUBLIC_URL` does not change this check.
+
+For a remote container, forward a local port to the published container port on the Docker host (for example, `ssh -N -L 3081:127.0.0.1:3080 user@docker-host`). On the same computer, open `http://127.0.0.1:3081/` with the container's launch token, then sign in. Keep using the HTTPS domain for normal access afterward. Alternatively, use **Add API Key** on the HTTPS page.
 
 ## Included tools
 
@@ -158,13 +164,13 @@ GHCR image tags are mutable in this workflow. Pushing `latest` or `dsh-v...` aga
 
 ```sh
 docker build \
-  --build-arg DSH_VERSION=0.2.1-rc.4 \
-  -t deepseek-harness:0.2.1-rc.4 \
+  --build-arg DSH_VERSION=0.2.2-rc.5 \
+  -t deepseek-harness:0.2.2-rc.5 \
   .
 ```
 
 Verify the result (boots the image, exercises login and the `/api` path, checks the shell and tooling):
 
 ```sh
-scripts/smoke-test.sh deepseek-harness:0.2.1-rc.4 3081
+scripts/smoke-test.sh deepseek-harness:0.2.2-rc.5 3081
 ```

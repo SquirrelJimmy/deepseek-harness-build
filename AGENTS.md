@@ -90,7 +90,7 @@ or `dev` publish under their exact tag and **never** move `:latest`; `rc` builds
 bash -n docker-entrypoint.sh scripts/smoke-test.sh
 
 # Build the image locally
-docker build --build-arg DSH_VERSION=0.2.1-rc.4 -t deepseek-harness:test .
+docker build -t deepseek-harness:test .
 
 # Validate the nginx template (absolute path required: a relative -c resolves
 # against nginx's compile-time prefix). The Dockerfile build is the authoritative check.
