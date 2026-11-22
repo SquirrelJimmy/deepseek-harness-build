@@ -4,23 +4,23 @@
 
 This repository builds a Docker image for DeepSeek Harness from the latest upstream `dsh-v*` tag in `deepseek-ai/deepseek-harness`.
 
-The GitHub workflow runs every day at `03:00 UTC` and can also be started manually. It checks whether `ghcr.io/<owner>/<repo>:<upstream-tag>` already exists before building. If the image tag exists, the scheduled build is skipped.
+The GitHub workflow runs every day at `03:00 UTC` and can also be started manually. It checks whether `ghcr.io/<owner>/<repo>:<upstream-tag>` already exists before building. If the image tag exists, the scheduled build is skipped and that existing image is promoted to `:latest`.
 
 For manual runs, set `force_rebuild` to `true` to rebuild the latest upstream version and push over the existing image tags.
 
-Alpha, beta, and dev upstream tags are published under their exact `dsh-v*` tag but never move `:latest`; `rc` builds do, because that is the upstream release channel.
+Every upstream `dsh-v*` tag is published under its exact tag and also moves `:latest`, including alpha, beta, and dev pre-releases; `latest` always follows the newest upstream tag.
 
 Every newly published image is smoke-tested by the workflow (`scripts/smoke-test.sh`): it boots the image, performs a real launch-token login, and asserts that `/api` requests reach Harness instead of being rejected by the browser-trust fence.
 
 ## Image tags
 
-- `ghcr.io/<owner>/<repo>:dsh-v0.2.2-rc.5`
+- `ghcr.io/<owner>/<repo>:dsh-v0.2.3-alpha.2`
 - `ghcr.io/<owner>/<repo>:latest`
 
 The Docker build receives the npm package version without the `dsh-v` prefix, for example:
 
 ```text
-dsh-v0.2.2-rc.5 -> 0.2.2-rc.5
+dsh-v0.2.3-alpha.2 -> 0.2.3-alpha.2
 ```
 
 ## Run
@@ -74,7 +74,7 @@ The image includes DeepSeek Harness plus a built-in nginx proxy and common utili
 - nginx
 - Git, Git LFS, OpenSSH, curl, wget, jq, yq (upstream static binary), ripgrep, fd, fzf, file, tree, less
 - Python 3, pip, venv, uv, uvx, `python`/`python3`
-- Node.js, npm, pnpm (via corepack)
+- Node.js 26, npm, pnpm (installed via npm)
 - build-essential, pkg-config, make, gcc
 - sqlite3, rsync, tmux, nano, vim, xxd
 - shellcheck, shfmt, bc, hexdump (`bsdextrautils`), zstd, 7z (`p7zip-full`)
@@ -115,17 +115,19 @@ The built-in configuration therefore rewrites `Host`, `Origin`, and `Sec-Fetch-S
 
 This is what makes the image work behind any domain or IP without `--trusted-host` declarations.
 
-Trade-off: with the trust fence bypassed by the proxy, the effective protection is the launch token plus the `SameSite=Strict` authority-bound cookie. Keep port `3080` on `127.0.0.1` unless you front it with your own reverse proxy, and only publish it to networks you trust. An external reverse proxy should forward to `3080` unchanged (no need to touch `Host`).
+If you need the new remote login feature, set both `DSH_PUBLIC_URL` and `DSH_TRUSTED_HOST` to the browser-facing address. `DSH_TRUSTED_HOST` switches the built-in nginx to public-authority mode: it preserves the browser's `Host`, `Origin`, and `Sec-Fetch-Site` headers on every route and passes the same values to `dsh` as `--trusted-host`. Leave `DSH_TRUSTED_HOST` unset to keep the default loopback rewrite and the any-domain behavior.
+
+Trade-off: in public-authority mode the trust fence accepts the configured browser authority, so the effective protection is the launch token plus the `SameSite=Strict` authority-bound cookie. Keep port `3080` on `127.0.0.1` unless you front it with your own reverse proxy, and only publish it to networks you trust. An external reverse proxy should forward to `3080` unchanged (no need to touch `Host`).
 
 ## Persistent nginx configuration
 
 The built-in nginx configuration is stored at `/data/dsh/nginx/nginx.conf`. Because `/data/dsh` is already the Harness persistent volume, no additional mount is required. On the first container start, the entrypoint copies the image template to that path.
 
-The template carries a version marker (`# dsh-nginx-template v2`). On startup the entrypoint:
+The template carries a version marker (`# dsh-nginx-template v3`) and an authority-mode marker. On startup the entrypoint:
 
-- keeps a persisted configuration whose marker is current or newer,
-- upgrades an unmodified older default (matched by checksum) to the current template and writes a backup next to it,
-- leaves a customized configuration untouched and logs a warning.
+- keeps a persisted configuration whose marker is current or newer when its authority mode matches,
+- upgrades an older or authority-mode-mismatched configuration to the current template and writes a backup next to it,
+- leaves a configuration without a recognizable version marker untouched unless it matches the known unmodified v1 checksum.
 
 Backups are written as `nginx.conf.bak.<timestamp>`. To force a reset to the image template, start the container with `DSH_NGINX_CONFIG_RESET=true`.
 
@@ -150,7 +152,8 @@ Keep the host port mapping scoped to `127.0.0.1` unless you intentionally want L
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `DSH_HOME` | `/data/dsh` | Harness persistent home |
-| `DSH_PUBLIC_URL` | unset | URL advertised in the logs, `DSH_WEB_URL`, and the agent runtime GUI URL; appended as `--public-url` |
+| `DSH_PUBLIC_URL` | unset | URL advertised in the logs, `DSH_WEB_URL`, and the agent runtime GUI URL; appended as `--public-url` and does not grant trust |
+| `DSH_TRUSTED_HOST` | unset | Browser-facing authority (or space-separated authorities) admitted by the trust fence; enables public-authority nginx mode and appends `--trusted-host` |
 | `DSH_NGINX_CONFIG_DIR` | `$DSH_HOME/nginx` | Directory holding the persisted `nginx.conf` |
 | `DSH_NGINX_CONFIG_RESET` | `false` | Overwrite the persisted config with the image template (backup first) |
 | `DSH_FIX_OWNERSHIP` | `true` | Recursively chown the mounted writable directories to the runtime user |
@@ -163,6 +166,8 @@ Keep the host port mapping scoped to `127.0.0.1` unless you intentionally want L
 GHCR image tags are mutable in this workflow. Pushing `latest` or `dsh-v...` again will move that tag to the new image digest. Existing consumers pinned by digest are not affected, but consumers using a tag must pull again to receive the new image.
 
 ## Local build
+
+The Dockerfile defaults to `DSH_VERSION=0.2.3-alpha.2` for local builds. To build the previous published rc.5 image, pass the version explicitly:
 
 ```sh
 docker build \

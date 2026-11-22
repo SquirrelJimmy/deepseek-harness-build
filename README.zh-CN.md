@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-本仓库把上游 DeepSeek Harness（DSH）打包成 Docker 镜像，内置 nginx 和 Git、Python、Node.js 等常用工具。发布流程每天检查上游版本；正式版和 RC 版会更新 `latest`，alpha、beta 和 dev 版只发布对应版本标签。
+本仓库把上游 DeepSeek Harness（DSH）打包成 Docker 镜像，内置 nginx 和 Git、Python、Node.js 等常用工具。发布流程每天检查上游版本；所有上游 `dsh-v*` 版本都会发布对应版本标签并更新 `latest`，`latest` 始终跟随上游最新版本。
 
 ## 快速启动
 
@@ -26,6 +26,7 @@ docker logs dsh
 
 - 将外部反向代理指向容器发布的端口（示例为 `3080`），限制后端端口只接受受信网络的访问。
 - 可给容器设置 `DSH_PUBLIC_URL=https://你的域名/`，让启动日志和 Harness 使用对外地址。这个变量只设置对外显示的 URL，不会改变账号登录的回调限制。
+- 如需使用新版远程登录，再设置 `DSH_TRUSTED_HOST=你的域名`（可写多个，空格分隔）；它会启用外部 authority 模式并给 `dsh` 传 `--trusted-host`。不设置时仍保持默认的 loopback 改写，任意域名/IP 访问行为不变。
 - 容器内置 nginx 已负责转发到 Harness，无需在外层代理重复改写 `Host` 或 `Origin`。
 
 ### 点击「登录」后立即失败

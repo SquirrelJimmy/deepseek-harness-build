@@ -86,6 +86,10 @@ docker exec "${NAME}" yq --version | grep -q 'yq' || fail "yq is not usable"
 echo "ok   yq $(docker exec "${NAME}" yq --version 2>/dev/null | tr -d '\r')"
 docker exec "${NAME}" dsh --version >/dev/null || fail "dsh --version failed"
 echo "ok   dsh $(docker exec "${NAME}" dsh --version 2>/dev/null | head -n 1 | tr -d '\r')"
+docker exec "${NAME}" node --version >/dev/null || fail "node is missing"
+echo "ok   node $(docker exec "${NAME}" node --version 2>/dev/null | head -n 1 | tr -d '\r')"
+docker exec "${NAME}" pnpm --version >/dev/null || fail "pnpm --version failed"
+echo "ok   pnpm $(docker exec "${NAME}" pnpm --version 2>/dev/null | head -n 1 | tr -d '\r')"
 docker exec "${NAME}" git --version >/dev/null || fail "git is missing"
 echo "ok   git"
 docker exec "${NAME}" vim --version | grep -q 'VIM - Vi IMproved' || fail "vim is missing"
@@ -106,8 +110,8 @@ for tool in shellcheck shfmt bc hexdump zstd 7z xmllint envsubst gpg; do
   docker exec "${NAME}" sh -c "command -v ${tool} >/dev/null" || fail "${tool} is missing"
 done
 echo "ok   shellcheck/shfmt/bc/hexdump/zstd/7z/xmllint/envsubst/gpg"
-docker exec "${NAME}" head -n 1 /data/dsh/nginx/nginx.conf | grep -q 'dsh-nginx-template v2' \
-  || fail "persisted nginx config is not template v2"
-echo "ok   nginx config template v2"
+docker exec "${NAME}" head -n 1 /data/dsh/nginx/nginx.conf | grep -q 'dsh-nginx-template v3' \
+  || fail "persisted nginx config is not template v3"
+echo "ok   nginx config template v3"
 
 echo "== all checks passed"

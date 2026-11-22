@@ -8,10 +8,12 @@ set -euo pipefail
 : "${DSH_NGINX_CONFIG_DIR:=${DSH_HOME}/nginx}"
 : "${DSH_NGINX_CONFIG_FILE:=${DSH_NGINX_CONFIG_DIR}/nginx.conf}"
 : "${DSH_NGINX_CONFIG_TEMPLATE:=/opt/dsh/nginx.conf.default}"
+: "${DSH_NGINX_CONFIG_TEMPLATE_PUBLIC:=/opt/dsh/nginx.public.conf.default}"
 : "${DSH_NGINX_CONFIG_RESET:=false}"
 : "${DSH_PUBLIC_URL:=}"
+: "${DSH_TRUSTED_HOST:=}"
 
-readonly DSH_NGINX_TEMPLATE_VERSION=2
+readonly DSH_NGINX_TEMPLATE_VERSION=3
 # sha256 of the historical (v1) built-in nginx.conf. A persisted copy that still
 # matches it was never customized, so it can be upgraded in place.
 readonly DSH_NGINX_V1_SHA256="9cfcff2c335bfdf784cd6a974e575e43caef5f0c7b6650cce05d517d5260f081"
@@ -93,12 +95,28 @@ nginx_template_version() {
   printf '%s' "${version%%$'\n'*}"
 }
 
+nginx_template_mode() {
+  local mode
+
+  mode="$(sed -n 's/^# dsh-nginx-mode \([a-z][a-z]*\).*/\1/p' "$1")"
+  printf '%s' "${mode%%$'\n'*}"
+}
+
+selected_nginx_template() {
+  if [[ -n "${DSH_TRUSTED_HOST}" && "${DSH_NGINX_CONFIG_TEMPLATE}" == "/opt/dsh/nginx.conf.default" ]]; then
+    printf '%s' "${DSH_NGINX_CONFIG_TEMPLATE_PUBLIC}"
+  else
+    printf '%s' "${DSH_NGINX_CONFIG_TEMPLATE}"
+  fi
+}
+
 sha256_file() {
   sha256sum "$1" | awk '{print $1}'
 }
 
 upgrade_nginx_config() {
   local reason="$1"
+  local template="$2"
   local backup="${DSH_NGINX_CONFIG_FILE}.bak.$(date +%Y%m%d%H%M%S)"
 
   if [[ -f "${DSH_NGINX_CONFIG_FILE}" ]]; then
@@ -107,31 +125,40 @@ upgrade_nginx_config() {
   fi
 
   log "installing nginx template v${DSH_NGINX_TEMPLATE_VERSION} (${reason})"
-  cp "${DSH_NGINX_CONFIG_TEMPLATE}" "${DSH_NGINX_CONFIG_FILE}"
+  cp "${template}" "${DSH_NGINX_CONFIG_FILE}"
 }
 
 prepare_nginx_config() {
+  local current_mode=""
   local current_version=""
+  local desired_mode=""
+  local template=""
 
   mkdir -p "${DSH_NGINX_CONFIG_DIR}"
+  template="$(selected_nginx_template)"
+  desired_mode="$(nginx_template_mode "${template}")"
+  [[ -n "${desired_mode}" ]] || desired_mode="legacy"
 
   if [[ -f "${DSH_NGINX_CONFIG_FILE}" ]]; then
     current_version="$(nginx_template_version "${DSH_NGINX_CONFIG_FILE}")"
+    current_mode="$(nginx_template_mode "${DSH_NGINX_CONFIG_FILE}")"
   fi
 
   if [[ ! -f "${DSH_NGINX_CONFIG_FILE}" ]]; then
-    log "initializing nginx config at ${DSH_NGINX_CONFIG_FILE} (template v${DSH_NGINX_TEMPLATE_VERSION})"
-    cp "${DSH_NGINX_CONFIG_TEMPLATE}" "${DSH_NGINX_CONFIG_FILE}"
+    log "initializing nginx config at ${DSH_NGINX_CONFIG_FILE} (template v${DSH_NGINX_TEMPLATE_VERSION}, ${desired_mode} mode)"
+    cp "${template}" "${DSH_NGINX_CONFIG_FILE}"
   elif [[ "${DSH_NGINX_CONFIG_RESET}" == "true" ]]; then
-    upgrade_nginx_config "reset requested via DSH_NGINX_CONFIG_RESET"
+    upgrade_nginx_config "reset requested via DSH_NGINX_CONFIG_RESET" "${template}"
+  elif [[ "${current_version}" =~ ^[0-9]+$ ]] && (( current_version >= DSH_NGINX_TEMPLATE_VERSION )) && [[ "${current_mode:-legacy}" == "${desired_mode}" ]]; then
+    log "keeping nginx config ${DSH_NGINX_CONFIG_FILE} (template v${current_version}, ${current_mode:-legacy} mode)"
   elif [[ "${current_version}" =~ ^[0-9]+$ ]] && (( current_version >= DSH_NGINX_TEMPLATE_VERSION )); then
-    log "keeping nginx config ${DSH_NGINX_CONFIG_FILE} (template v${current_version})"
+    upgrade_nginx_config "authority mode ${current_mode:-legacy} -> ${desired_mode}" "${template}"
   elif [[ "${current_version}" =~ ^[0-9]+$ ]]; then
-    upgrade_nginx_config "template v${current_version} -> v${DSH_NGINX_TEMPLATE_VERSION}"
+    upgrade_nginx_config "template v${current_version} -> v${DSH_NGINX_TEMPLATE_VERSION}" "${template}"
   elif [[ "$(sha256_file "${DSH_NGINX_CONFIG_FILE}")" == "${DSH_NGINX_V1_SHA256}" ]]; then
-    upgrade_nginx_config "unmodified legacy config detected"
+    upgrade_nginx_config "unmodified legacy config detected" "${template}"
   else
-    log "warning: ${DSH_NGINX_CONFIG_FILE} looks customized; keeping it. Current template: ${DSH_NGINX_CONFIG_TEMPLATE}"
+    log "warning: ${DSH_NGINX_CONFIG_FILE} looks customized; keeping it. Current template: ${template}"
   fi
 
   chmod 0644 "${DSH_NGINX_CONFIG_FILE}" 2>/dev/null || true
@@ -152,6 +179,7 @@ run_web_with_nginx() {
   local status
   local has_public_url=0
   local -a dsh_args=("$@")
+  local -a trusted_hosts=()
 
   if [[ -n "${DSH_PUBLIC_URL}" ]]; then
     for arg in "${dsh_args[@]}"; do
@@ -166,6 +194,14 @@ run_web_with_nginx() {
       dsh_args+=(--public-url "${DSH_PUBLIC_URL}")
       log "advertising public URL: ${DSH_PUBLIC_URL}"
     fi
+  fi
+
+  if [[ -n "${DSH_TRUSTED_HOST}" ]]; then
+    read -r -a trusted_hosts <<< "${DSH_TRUSTED_HOST}"
+    for arg in "${trusted_hosts[@]}"; do
+      dsh_args+=(--trusted-host "${arg}")
+    done
+    log "accepting trusted hosts: ${DSH_TRUSTED_HOST}"
   fi
 
   log "starting DeepSeek Harness web stack"

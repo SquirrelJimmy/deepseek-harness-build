@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
 
-ARG NODE_VERSION=24-bookworm-slim
+ARG NODE_VERSION=26-bookworm-slim
 ARG UV_VERSION=0.13.6
 
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 FROM node:${NODE_VERSION}
 
-ARG DSH_VERSION=0.2.2-rc.5
+ARG DSH_VERSION=0.2.3-alpha.2
 ARG PNPM_VERSION=11.28.5
 ARG YQ_VERSION=v4.54.1
 
@@ -32,8 +32,8 @@ ENV DSH_HOME=/data/dsh \
 
 COPY --from=uv /uv /uvx /usr/local/bin/
 
-# dsh >= 0.2 requires Node.js 24.9+; fail the build instead of shipping a broken image.
-RUN node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 24 || (major === 24 && minor < 9)) { console.error(`dsh requires Node.js >= 24.9.0, found ${process.versions.node}`); process.exit(1); }'
+# dsh 0.2.3+ requires Node.js ^24.22.3 in the 24.x line or >=26.13.1; fail the build instead of shipping a broken image.
+RUN node -e 'const [major, minor, patch] = process.versions.node.split(".").map(Number); const ok = (major === 24 && (minor > 22 || (minor === 22 && patch >= 3))) || (major >= 26 && (major > 26 || minor > 13 || (minor === 13 && patch >= 1))); if (!ok) { console.error(`dsh requires Node.js ^24.22.3 or >=26.13.1, found ${process.versions.node}`); process.exit(1); }'
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=5 update \
     && DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
@@ -106,8 +106,8 @@ RUN set -eux; \
     chmod +x /usr/local/bin/yq; \
     yq --version
 
-RUN corepack enable \
-    && corepack prepare "pnpm@${PNPM_VERSION}" --activate
+RUN npm install -g "pnpm@${PNPM_VERSION}" \
+    && pnpm --version
 
 RUN npm install -g \
       --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,fs-ext,node-pty,@google/genai,protobufjs \
@@ -139,11 +139,13 @@ RUN mkdir -p \
     && chmod -R 0777 /tmp/dsh-nginx
 
 COPY nginx.conf /opt/dsh/nginx.conf.default
+COPY nginx.public.conf /opt/dsh/nginx.public.conf.default
 COPY --chown=node:node --chmod=644 zshrc /home/node/.zshrc
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
     && nginx -t -c /opt/dsh/nginx.conf.default \
+    && nginx -t -c /opt/dsh/nginx.public.conf.default \
     && find /tmp/dsh-nginx -mindepth 1 -maxdepth 1 -exec rm -rf {} + \
     && chmod 0777 /tmp/dsh-nginx
 

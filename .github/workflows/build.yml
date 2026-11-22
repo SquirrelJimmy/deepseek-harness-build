@@ -10,6 +10,7 @@ on:
       - Dockerfile
       - docker-entrypoint.sh
       - nginx.conf
+      - nginx.public.conf
       - zshrc
       - scripts/smoke-test.sh
       - .github/workflows/build.yml
@@ -73,10 +74,6 @@ jobs:
           selection="$(TAGS="${tags}" node <<'NODE'
           const tags = (process.env.TAGS || '').split(/\n/).map((tag) => tag.trim()).filter(Boolean);
 
-          // Upstream ships rc builds as releases and uses alpha/beta/dev for
-          // in-progress work; those must never move the :latest tag.
-          const UNSTABLE = new Set(['alpha', 'beta', 'dev']);
-
           function parse(tag) {
             const version = tag.replace(/^dsh-v/, '');
             const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/);
@@ -125,16 +122,10 @@ jobs:
               comparePrerelease(left.prerelease, right.prerelease);
           }
 
-          function isUnstable(version) {
-            return version.prerelease.length > 0 && UNSTABLE.has(version.prerelease[0].toLowerCase());
-          }
-
           const parsed = tags.map(parse).filter(Boolean);
-          const candidates = parsed.filter((version) => !isUnstable(version));
-          const pool = candidates.length > 0 ? candidates : parsed;
-          const selected = pool.sort(compare).at(-1);
+          const selected = parsed.sort(compare).at(-1);
 
-          if (selected) console.log(`${selected.tag}\t${isUnstable(selected) ? 'true' : 'false'}`);
+          if (selected) console.log(selected.tag);
           NODE
           )"
 
@@ -143,7 +134,7 @@ jobs:
             exit 1
           fi
 
-          IFS=$'\t' read -r tag unstable <<< "${selection}"
+          IFS= read -r tag <<< "${selection}"
 
           version="${tag#dsh-v}"
 
@@ -154,8 +145,7 @@ jobs:
 
           echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
-          echo "unstable=${unstable}" >> "${GITHUB_OUTPUT}"
-          echo "Resolved upstream tag ${tag}; npm version ${version}; unstable=${unstable}"
+          echo "Resolved upstream tag ${tag}; npm version ${version}"
 
       - name: Compose image tags
         id: tags
@@ -163,14 +153,9 @@ jobs:
         run: |
           image="${{ steps.image.outputs.name }}"
           tag="${{ steps.upstream.outputs.tag }}"
-          tags="${image}:${tag}"
+          tags="${image}:${tag}"$'\n'"${image}:latest"
 
-          if [[ "${{ steps.upstream.outputs.unstable }}" == "false" ]]; then
-            tags="${tags}"$'\n'"${image}:latest"
-            echo "Also publishing ${image}:latest"
-          else
-            echo "Unstable upstream build; leaving ${image}:latest untouched"
-          fi
+          echo "Also publishing ${image}:latest"
 
           {
             echo "list<<EOF"
@@ -204,6 +189,14 @@ jobs:
             echo "exists=false" >> "${GITHUB_OUTPUT}"
             echo "Image does not exist yet: ${image}"
           fi
+
+      - name: Promote existing image to latest
+        if: steps.existing.outputs.exists == 'true'
+        shell: bash
+        run: |
+          image="${{ steps.image.outputs.name }}"
+          tag="${{ steps.upstream.outputs.tag }}"
+          docker buildx imagetools create --tag "${image}:latest" "${image}:${tag}"
 
       - name: Set up QEMU
         if: steps.existing.outputs.exists != 'true'
