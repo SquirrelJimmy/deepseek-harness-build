@@ -2,7 +2,23 @@
 
 [English](README.md)
 
-本仓库把上游 DeepSeek Harness（DSH）打包成 Docker 镜像，内置 nginx 和 Git、Python、Node.js 等常用工具。发布流程每天检查上游版本；所有上游 `dsh-v*` 版本都会发布对应版本标签并更新 `latest`，`latest` 始终跟随上游最新版本。
+本仓库把上游 DeepSeek Harness（DSH）打包成 Docker 镜像，内置 nginx 和 Git、GitHub CLI（`gh`）、Python、Node.js 等常用工具。发布流程每天检查上游版本；所有上游 `dsh-v*` 版本都会发布对应版本标签并更新 `latest`，`latest` 始终跟随上游最新版本。
+
+变更请求面板通过 `gh` 读取 GitHub；首次使用请在容器内执行 `gh auth login --hostname github.com`，凭据保存在持久化的 `/home/node/.config/gh` 目录。
+
+## 插件兼容层
+
+DSH 升级时可能删除或调整插件 API。为旧版 DSH 编写的第三方 Web 插件可能在新版 DSH 上出现通用 HTTP 错误，而 DSH 本身仍然正常。
+
+`dsh-plugin-compat` 是面向旧版第三方 DSH Web 插件的通用兼容层，版本与 DSH 发布同步。它在 DSH 正常完成会话认证后，仅对插件处理请求时使用的旧版请求视图做兼容；不按具体插件或路由写死，也不会绕过认证。
+
+DSH 现在支持直接把 Git 仓库作为插件安装源。在 DSH 插件页选择「添加插件」，粘贴仓库地址：
+
+```text
+https://github.com/SquirrelJimmy/dsh-plugin-compat
+```
+
+如需可复现安装，可在仓库地址中固定 tag 或 commit；DSH 升级后请使用与当前 DSH 版本匹配的兼容层版本。
 
 ## 快速启动
 

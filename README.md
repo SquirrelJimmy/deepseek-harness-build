@@ -73,6 +73,7 @@ The image includes DeepSeek Harness plus a built-in nginx proxy and common utili
 
 - nginx
 - Git, Git LFS, OpenSSH, curl, wget, jq, yq (upstream static binary), ripgrep, fd, fzf, file, tree, less
+- GitHub CLI (`gh`), used by the change-request panel to read GitHub pull requests
 - Python 3, pip, venv, uv, uvx, `python`/`python3`
 - Node.js 26, npm, pnpm (installed via npm)
 - build-essential, pkg-config, make, gcc
@@ -88,7 +89,23 @@ The default locale is `C.UTF-8` and `SHELL` is `/bin/zsh`, so UTF-8 output (incl
 
 A minimal `/home/node/.zshrc` is included (history, completion, simple prompt). Mount your own file over it to customize; the image does not copy a host zsh configuration.
 
-Heavyweight tools such as LibreOffice, pandoc, ffmpeg, ImageMagick, and `gh` are intentionally not installed; add them in a derived Dockerfile if your workload needs them. Office document conversion keeps using Harness's own LibreOffice Kit flow.
+Heavyweight tools such as LibreOffice, pandoc, ffmpeg, and ImageMagick are intentionally not installed; add them in a derived Dockerfile if your workload needs them. Office document conversion keeps using Harness's own LibreOffice Kit flow.
+
+The change-request panel reads GitHub through `gh`. Authenticate once inside the container with `gh auth login --hostname github.com`; the credentials live under `/home/node/.config/gh` and persist with the `/home/node` volume. Without authentication the panel reports `gh could not start` or a `gh is not signed in` message.
+
+## Plugin compatibility
+
+DSH releases can remove or change plugin-facing APIs. Third-party plugins built for older DSH versions may then fail while DSH itself stays healthy, often with a generic HTTP error rather than a plugin-specific message.
+
+`dsh-plugin-compat` is a generic compatibility layer for legacy third-party DSH Web plugins. It keeps DSH's normal session authentication in front of every request and adapts only the legacy request view used inside an already-authorized plugin handler. It is not tied to a particular plugin, route list, or DSH API name, and its version follows the DSH release it supports (currently `0.2.3-alpha.2`).
+
+DSH can install plugins directly from Git repositories. In the DSH Plugins page, choose **Add plugin** and use the repository URL:
+
+```text
+https://github.com/SquirrelJimmy/dsh-plugin-compat
+```
+
+Pin a tag or commit in the repository URL for reproducible installs, and use the compatibility-layer version that matches the running DSH release.
 
 ## Mounted directory permissions
 

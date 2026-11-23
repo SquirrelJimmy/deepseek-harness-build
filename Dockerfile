@@ -9,6 +9,7 @@ FROM node:${NODE_VERSION}
 ARG DSH_VERSION=0.2.3-alpha.2
 ARG PNPM_VERSION=11.28.5
 ARG YQ_VERSION=v4.54.1
+ARG GH_VERSION=v2.105.0
 
 ENV DSH_HOME=/data/dsh \
     NODE_ENV=production \
@@ -105,6 +106,25 @@ RUN set -eux; \
       "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${yq_arch}"; \
     chmod +x /usr/local/bin/yq; \
     yq --version
+
+# DSH's experimental forge-github provider shells out to `gh`; it is a hard
+# dependency of the change-request panel, not an optional convenience tool.
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "${arch}" in \
+      amd64) gh_arch=amd64 ;; \
+      arm64) gh_arch=arm64 ;; \
+      *) echo "unsupported architecture for gh: ${arch}" >&2; exit 1 ;; \
+    esac; \
+    gh_version="${GH_VERSION#v}"; \
+    curl -fsSL --retry 5 -o /tmp/gh.tar.gz \
+      "https://github.com/cli/cli/releases/download/${GH_VERSION}/gh_${gh_version}_linux_${gh_arch}.tar.gz"; \
+    tar -xzf /tmp/gh.tar.gz -C /tmp; \
+    install -m 0755 "/tmp/gh_${gh_version}_linux_${gh_arch}/bin/gh" /usr/local/bin/gh.real; \
+    printf '%s\n' '#!/bin/sh' 'unset GODEBUG' 'exec /usr/local/bin/gh.real "$@"' > /usr/local/bin/gh; \
+    chmod 0755 /usr/local/bin/gh; \
+    rm -rf /tmp/gh.tar.gz "/tmp/gh_${gh_version}_linux_${gh_arch}"; \
+    gh --version
 
 RUN npm install -g "pnpm@${PNPM_VERSION}" \
     && pnpm --version

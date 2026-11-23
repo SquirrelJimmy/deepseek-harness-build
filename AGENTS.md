@@ -9,7 +9,7 @@ around the upstream npm package `@deepseek-ai/dsh` and publishes it to GHCR
 (`ghcr.io/<owner>/<repo>`). The image adds:
 
 - a built-in nginx reverse proxy so the browser GUI works behind any host, port, or domain,
-- a broad set of agent-friendly CLI tools (git, python/uv, node/pnpm, ripgrep, yq, ...),
+- a broad set of agent-friendly CLI tools (git, python/uv, node/pnpm, ripgrep, yq, gh, ...),
 - a root-to-`node` privilege-drop entrypoint with persisted config and volume handling.
 
 The upstream project lives at `deepseek-ai/deepseek-harness` and is consumed as a versioned
@@ -19,7 +19,7 @@ The upstream project lives at `deepseek-ai/deepseek-harness` and is consumed as 
 
 | Path | Role |
 | --- | --- |
-| `Dockerfile` | Image definition: Node 26 base, apt tooling, yq static binary, pnpm, `dsh` install, volumes, healthcheck. |
+| `Dockerfile` | Image definition: Node 26 base, apt tooling, yq/gh static binaries, pnpm, `dsh` install, volumes, healthcheck. |
 | `docker-entrypoint.sh` | Runtime orchestration: fix mounted dir ownership, prepare nginx config, launch `dsh web` + nginx, signal handling. |
 | `nginx.conf` | Built-in proxy template (v3, legacy authority mode). Listens on `0.0.0.0:3080`, forwards to `127.0.0.1:13080`. |
 | `nginx.public.conf` | Proxy template (v3, public authority mode) selected by `DSH_TRUSTED_HOST`. |
@@ -78,8 +78,11 @@ Without all three, existing users keep the old config and never see your change.
   `protobufjs`). Adding a dependency that ships native bindings means extending that list.
 - The Debian `yq` package is a jq wrapper and is not used; the upstream static binary is
   installed instead.
-- Heavyweight tools (LibreOffice, pandoc, ffmpeg, ImageMagick, `gh`) are intentionally absent.
+- Heavyweight tools (LibreOffice, pandoc, ffmpeg, ImageMagick) are intentionally absent.
   Add them in a derived image, not here, unless the task explicitly asks.
+- `gh` is installed from the pinned `GH_VERSION` upstream release because DSH's experimental
+  forge-github provider shells out to it for the change-request panel; it is not a generic
+  convenience tool.
 - The image defaults to `/bin/zsh` (`SHELL=/bin/zsh` and the `node` user's login shell);
   repository scripts stay bash.
 - `zshrc` is copied to `/home/node/.zshrc`. Keep it dependency-free (no Oh My Zsh, Starship,
@@ -120,7 +123,7 @@ is not verified until either the local smoke test or the workflow's smoke job pa
   stderr with an `[entrypoint]` prefix.
 - Comments explain *why* (authority fence, ownership, yq packaging quirk), not *what*.
   Preserve them when editing; they encode hard-won context.
-- Pin tool versions as `ARG`s (`NODE_VERSION`, `DSH_VERSION`, `PNPM_VERSION`, `UV_VERSION`, `YQ_VERSION`).
+- Pin tool versions as `ARG`s (`NODE_VERSION`, `DSH_VERSION`, `PNPM_VERSION`, `UV_VERSION`, `YQ_VERSION`, `GH_VERSION`).
 - Keep the runtime user non-root; root is only for chown + privilege drop.
 - Documentation and code comments are English. Keep it that way.
 - Avoid drive-by reformatting. Changes are surgical and should be verifiable with the
